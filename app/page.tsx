@@ -54,55 +54,69 @@ export default function Home() {
 function ExportButton({ setHtml }: { setHtml: (html: string) => void }) {
   const editor = useEditor();
   const [loading, setLoading] = useState(false);
-  // A tailwind styled button that is pinned to the bottom right of the screen
+
+  const handleAsyncRequest = async () => {
+    setLoading(true);
+    try {
+      const svg = await editor.getSvg(
+        Array.from(editor.currentPageShapeIds)
+      );
+      if (!svg) {
+        return;
+      }
+      const png = await getSvgAsImage(svg, {
+        type: "png",
+        quality: 1,
+        scale: 1,
+      });
+      const dataUrl = await blobToBase64(png!);
+      
+      // 发送异步请求，不等待结果
+      fetch("/api/toHtml", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ image: dataUrl }),
+      })
+      .then(resp => resp.json())
+      .then(json => {
+        if (json.error) {
+          alert("Error from open ai: " + JSON.stringify(json.error));
+          return;
+        }
+
+        const message = json.choices[0].message.content;
+        const start = message.indexOf("<!DOCTYPE html>");
+        const end = message.indexOf("</html>");
+        const html = message.slice(start, end + "</html>".length);
+        setHtml(html);
+      })
+      .catch(error => {
+        console.error("Error during async request:", error);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+
+    } catch (error) {
+      console.error("Error during async request:", error);
+      setLoading(false);
+    }
+  };
+
   return (
     <button
-      onClick={async (e) => {
-        setLoading(true);
-        try {
-          e.preventDefault();
-          const svg = await editor.getSvg(
-            Array.from(editor.currentPageShapeIds)
-          );
-          if (!svg) {
-            return;
-          }
-          const png = await getSvgAsImage(svg, {
-            type: "png",
-            quality: 1,
-            scale: 1,
-          });
-          const dataUrl = await blobToBase64(png!);
-          const resp = await fetch("/api/toHtml", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ image: dataUrl }),
-          });
-
-          const json = await resp.json();
-
-          if (json.error) {
-            alert("Error from open ai: " + JSON.stringify(json.error));
-            return;
-          }
-
-          const message = json.choices[0].message.content;
-          const start = message.indexOf("<!DOCTYPE html>");
-          const end = message.indexOf("</html>");
-          const html = message.slice(start, end + "</html>".length);
-          setHtml(html);
-        } finally {
-          setLoading(false);
-        }
+      onClick={(e) => {
+        e.preventDefault();
+        handleAsyncRequest();
       }}
-      className="fixed bottom-4 right-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded ="
+      className="fixed bottom-4 right-4 bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
       style={{ zIndex: 1000 }}
       disabled={loading}
     >
       {loading ? (
-        <div className="flex justify-center items-center ">
+        <div className="flex justify-center items-center">
           <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
         </div>
       ) : (
